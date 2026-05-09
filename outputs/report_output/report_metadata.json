@@ -20,6 +20,13 @@
       "cumulative_report_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost/cost_report_cumulative_results_reviewer_20260509_095549.json"
     }
   },
+  "support_files": {
+    "claim_plan_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/scoping_methodology/claim_plan_refined.json",
+    "dataset_context_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/scoping_methodology/dataset_context_report.json",
+    "scope_refined_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/scoping_methodology/scope_refined.json",
+    "scope_graph_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/assets/scope_graph.png",
+    "scope_graph_key_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/assets/scope_graph_key.png"
+  },
   "artifact_counts": {
     "artifact_inventory_files": 4,
     "artifact_text_samples": 4,
