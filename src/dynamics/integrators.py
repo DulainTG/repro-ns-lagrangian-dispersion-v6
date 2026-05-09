@@ -1,7 +1,9 @@
 import numpy as np
-from typing import List
+from typing import List, Mapping, Optional
 from src.dynamics.interpolation import EightPointTrilinearKernel
 from src.dynamics.domain import DomainBox, wrap_to_periodic_domain
+from src.dynamics.tracking import TracerStateBuffer
+from src.fields.grid import GridMetadata
 
 class RungeKutta4Solver:
     """Numerical solver implementing the 4th-order Runge-Kutta scheme for trajectory integration.
@@ -106,3 +108,95 @@ class TemporalSubStepper:
     def get_sub_step_times(self) -> List[float]:
         """Calculate the normalized time offsets [0, 1] for each sub-step stage."""
         return [float(i) / self.steps_per_interval for i in range(self.steps_per_interval)]
+class LagrangianTracerEngine:
+    """High-level engine for integrating Lagrangian tracer trajectories in DNS snapshots.
+
+    Primary interface for performing the end-to-end integration required by EXP1.
+    Coordinates the solvers, temporal steppers, and state buffers to simulate
+    particle transport through turbulent flow fields.
+
+    Args:
+        solver: The RK4 solver for inner-step displacements.
+        stepper: The sub-stepping logic controller.
+        buffer: The buffer holding current tracer states and tracking history.
+    """
+
+    def __init__(self, solver: 'RungeKutta4Solver', stepper: 'TemporalSubStepper', buffer: TracerStateBuffer) -> None:
+        self.solver = solver
+        self.stepper = stepper
+        self.buffer = buffer
+
+    def integrate_snapshot_interval(self, v_start: np.ndarray, v_end: np.ndarray, snapshot_idx: int, aux_fields: Mapping[str, np.ndarray]) -> None:
+        """Integrate the tracer ensemble between two snapshots.
+
+        Performs N sub-steps using the RK4 solver, sampling auxiliary fields (like Q-criterion) 
+        for EXP3 tracking, and commits results to the history buffer.
+
+        Args:
+            v_start: Velocity field at the starting snapshot.
+            v_end: Velocity field at the ending snapshot.
+            snapshot_idx: The index of the current temporal interval.
+            aux_fields: Mapping of field names to grids for Lagrangian sampling.
+        """
+        positions = self.buffer.current_positions
+        num_steps = self.stepper.steps_per_interval
+        dt = self.stepper.sub_dt
+        
+        # Pre-calculate velocity difference for temporal interpolation within the interval
+        dv = v_end - v_start
+        
+        for i in range(num_steps):
+            alpha_start = i / num_steps
+            alpha_end = (i + 1) / num_steps
+            
+            # Fields at start and end of this sub-step
+            v_step_start = v_start + alpha_start * dv
+            v_step_end = v_start + alpha_end * dv
+            
+            # Calculate displacement for this sub-step using RK4
+            displacement = self.solver.evaluate_step(positions, v_step_start, v_step_end, dt)
+            positions = self.solver.update_position(positions, displacement)
+            
+        # Update current positions in the buffer
+        self.buffer.update_positions(positions)
+        
+        # Sample auxiliary fields (e.g., Q-criterion) at the end of the interval
+        sampled_aux = {}
+        if aux_fields:
+            for name, grid in aux_fields.items():
+                sampled_aux[name] = self.solver.kernel.interpolate(grid, positions)
+        
+        # Persist state at the end of the interval (snapshot_idx + 1)
+        # Note: Initial snapshot at t=0 should be recorded during setup before first interval
+        self.buffer.commit_to_history(snapshot_idx + 1, samples=sampled_aux)
+class PassiveTracerIntegrator:
+    """Integrator for passive tracers in an Eulerian velocity field frame.
+
+    Provides a simplified interface for advecting particles through static or semi-static
+    Eulerian fields where complex temporal sub-stepping is not the primary focus.
+
+    Args:
+        metadata: Metadata defining the Eulerian grid scale and topology.
+    """
+
+    def __init__(self, metadata: GridMetadata) -> None:
+        self.metadata = metadata
+        self.kernel = EightPointTrilinearKernel(metadata)
+        self.domain = DomainBox(extent=metadata.extent, origin=metadata.origin)
+        self.solver = RungeKutta4Solver(self.kernel, self.domain)
+
+    def step_forward(self, positions: np.ndarray, velocity_field: np.ndarray, dt: float) -> np.ndarray:
+        """Advect tracer positions by one step using the provided field.
+
+        Args:
+            positions: Current tracer coordinates.
+            velocity_field: The stationary velocity field for this step.
+            dt: Time delta for the advection.
+
+        Returns:
+            New advected and boundary-wrapped coordinates.
+        """
+        # For a stationary field, the field at the start and end of the step is the same.
+        # RK4 handling of linear temporal interpolation will correctly use this stationary field.
+        displacement = self.solver.evaluate_step(positions, velocity_field, velocity_field, dt)
+        return self.solver.update_position(positions, displacement)
