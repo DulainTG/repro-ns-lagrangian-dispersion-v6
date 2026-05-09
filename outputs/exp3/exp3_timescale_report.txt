@@ -1,0 +1,7 @@
+--------------------------------------------------
+EXP3: VORTEX TRAPPING TIMESCALE ANALYSIS
+--------------------------------------------------
+Vortex Criterion (Q_threshold):  0.0000e+00
+Lagrangian Auto-correlation Time (tau_Q): 0.333930
+Normalized Timescale (tau_Q / Te):        0.333930
+--------------------------------------------------
