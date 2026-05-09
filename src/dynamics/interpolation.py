@@ -130,3 +130,30 @@ def accumulate_trilinear_field_values(field: np.ndarray, weight_set: EightPointW
         # neighbor_values is (N, 8, C)
         # weights[:, :, np.newaxis] has shape (N, 8, 1)
         return np.sum(neighbor_values * weights[:, :, np.newaxis], axis=1)
+class EightPointTrilinearKernel:
+    """High-level interface for performing trilinear interpolation on a grid.
+
+    Encapsulates both the weight calculation and the accumulation logic.
+    Used in EXP1 and EXP2 for velocity interpolation.
+    """
+
+    def __init__(self, metadata: GridMetadata) -> None:
+        """Initialize the kernel with grid specifications.
+
+        Args:
+            metadata: Grid resolution and physical metadata.
+        """
+        self._calculator = TrilinearWeightCalculator(metadata)
+
+    def interpolate(self, field: np.ndarray, positions: np.ndarray) -> np.ndarray:
+        """Interpolate field values at the specified tracer positions.
+
+        Args:
+            field: Numeric grid data (scalar or vector).
+            positions: Target coordinates (N, 3).
+
+        Returns:
+            Values sampled from the field at the requested positions.
+        """
+        weight_set = self._calculator.compute_weights(positions)
+        return accumulate_trilinear_field_values(field, weight_set)
