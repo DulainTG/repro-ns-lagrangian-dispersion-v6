@@ -1,7 +1,8 @@
 import numpy as np
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
+from dataclasses import dataclass
 
 from src.experiments import BaseExperiment
 from src.experiments.outputs import ReproductionRunSettings, MsdAlphaResult, ReproductionCsvSerializer
@@ -12,7 +13,7 @@ from src.dynamics.initialization import ParticleSeeder
 from src.dynamics.tracking import PositionCoordinateBuffer, StateHistoryRecords, TracerStateBuffer
 from src.dynamics.solver import RK4SolverIterationRoutine
 from src.dynamics.interpolation import EightPointTrilinearKernel
-from src.analysis.statistics import MsdCalculator, AlphaExponentEstimator
+from src.analysis.statistics import MsdCalculator, AlphaExponentEstimator, TransportRegime, identify_diffusion_regime
 
 
 class MsdRegimeExperiment(BaseExperiment):
@@ -170,3 +171,99 @@ class MsdRegimeExperiment(BaseExperiment):
         output_path = Path("exp1_msd_alpha_results.csv")
         df = results.to_dataframe()
         self.serializer.save_table(df, output_path)
+@dataclass(frozen=True)
+class RegimeValidationReport:
+    """Verification metrics for MSD transport regimes."""
+    detected_regimes: List[TransportRegime]
+    transition_times: List[float]
+    is_c4_satisfied: bool
+    ballistic_agreement_error: float
+    diffusive_agreement_error: float
+
+
+class RegimeTransitionValidator:
+    """Verifies Claim C4: MSD transitions through ballistic and diffusive regimes.
+
+    Validates that the scaling exponent alpha transitions from approx 2.0 to 1.0
+    during the temporal evolution of the Lagrangian tracers.
+    """
+
+    def validate_msd_regimes(self, msd_results: MsdAlphaResult) -> RegimeValidationReport:
+        """Perform diagnostic verification of transport regimes.
+
+        Args:
+            msd_results: Calculated MSD and alpha values from EXP1.
+
+        Returns:
+            Validation report comparing results against C4 claim thresholds.
+        """
+        lag_times = msd_results.lag_times
+        alpha = msd_results.alpha_exponent
+
+        boundaries = self.identify_regime_boundaries(lag_times, alpha)
+
+        detected_regimes = [b[2] for b in boundaries]
+        # Transition times correspond to the start of each new regime (after the first one)
+        transition_times = [b[0] for b in boundaries[1:]]
+
+        # C4 satisfaction Requirement: Transitions through ballistic (alpha=2) and diffusive (alpha=1)
+        has_ballistic = TransportRegime.BALLISTIC in detected_regimes
+        has_diffusive = TransportRegime.DIFFUSIVE in detected_regimes
+        is_c4_satisfied = has_ballistic and has_diffusive
+
+        # Calculate average deviation from ideal scaling in each detected regime
+        ballistic_errors = []
+        diffusive_errors = []
+
+        for a in alpha:
+            regime = identify_diffusion_regime(a)
+            if regime == TransportRegime.BALLISTIC:
+                ballistic_errors.append(abs(a - 2.0))
+            elif regime == TransportRegime.DIFFUSIVE:
+                diffusive_errors.append(abs(a - 1.0))
+
+        ballistic_agreement_error = float(np.mean(ballistic_errors)) if ballistic_errors else float('nan')
+        diffusive_agreement_error = float(np.mean(diffusive_errors)) if diffusive_errors else float('nan')
+
+        return RegimeValidationReport(
+            detected_regimes=detected_regimes,
+            transition_times=transition_times,
+            is_c4_satisfied=is_c4_satisfied,
+            ballistic_agreement_error=ballistic_agreement_error,
+            diffusive_agreement_error=diffusive_agreement_error
+        )
+
+    def identify_regime_boundaries(self, lag_times: np.ndarray, alpha: np.ndarray) -> List[Tuple[float, float, TransportRegime]]:
+        """Identify continuous time intervals for each transport regime.
+
+        Args:
+            lag_times: Time indices for the trajectory snapshots.
+            alpha: Local scaling exponent values.
+
+        Returns:
+            List of (start_time, end_time, regime) tuples.
+        """
+        if len(lag_times) == 0:
+            return []
+
+        regimes = [identify_diffusion_regime(a) for a in alpha]
+        
+        boundaries = []
+        if not regimes:
+            return boundaries
+
+        current_regime = regimes[0]
+        current_start_time = lag_times[0]
+        
+        for i in range(1, len(regimes)):
+            if regimes[i] != current_regime:
+                # Append previous regime info: (start_t, end_t, regime)
+                boundaries.append((current_start_time, lag_times[i-1], current_regime))
+                # Reset for new regime
+                current_regime = regimes[i]
+                current_start_time = lag_times[i]
+        
+        # Append the final regime
+        boundaries.append((current_start_time, lag_times[-1], current_regime))
+        
+        return boundaries
