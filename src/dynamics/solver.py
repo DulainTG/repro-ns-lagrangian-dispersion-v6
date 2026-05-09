@@ -1,7 +1,9 @@
 from dataclasses import dataclass
+from typing import Mapping
 import numpy as np
 from src.dynamics.interpolation import EightPointTrilinearKernel
 from src.dynamics.domain import DomainBox, wrap_to_periodic_domain
+from src.dynamics.tracking import TracerStateBuffer
 
 @dataclass(frozen=True)
 class NumericalSolverConfig:
@@ -37,7 +39,7 @@ class RK4SolverIterationRoutine:
         self.kernel = kernel
         self.domain = domain
 
-    def step(self, positions: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, alpha_t: float, dt: float) -> np.ndarray:
+    def step(self, positions: np.ndarray, v_start: np.ndarray, v_end: np.ndarray, alpha_t: float, dt: float, dt_interval: float = 1.0) -> np.ndarray:
         """Perform one RK4 sub-step to advance tracer positions.
 
         Args:
@@ -46,14 +48,14 @@ class RK4SolverIterationRoutine:
             v_end: Velocity vector field at the end of the snapshot interval.
             alpha_t: Time interpolation factor in [0, 1] for linear velocity weighting.
             dt: Physical time increment for this integration sub-step.
+            dt_interval: Total physical time between velocity snapshots.
 
         Returns:
             Updated positions after the displacement update and periodic wrapping, shape (N, 3).
         """
         # Linear temporal interpolation requires knowing the change in alpha per step dt.
-        # Assuming normalized snapshot interval where T_snapshot = 1.0, then d_alpha = dt.
-        # Otherwise, d_alpha = dt / T_snapshot. In the absence of T_snapshot, we assume 1.0.
-        d_alpha = dt
+        # d_alpha is the fractional change in the snapshot interval.
+        d_alpha = dt / dt_interval
 
         def get_velocity_at_time(pos: np.ndarray, alpha: float) -> np.ndarray:
             # Although the kernel might handle periodic indices, we wrap world positions 
@@ -91,3 +93,73 @@ class RK4SolverIterationRoutine:
 
         # Enforce periodic boundary conditions after the full step
         return wrap_to_periodic_domain(new_positions, self.domain)
+class SnapshotIterationEngine:
+    """Coordinator for tracer integration across a single snapshot time interval.
+
+    Handles the sub-stepping loop defined in EXP1 and the auxiliary field 
+    sampling required for EXP3 (Lagrangian Q-autocorrelation).
+
+    Args:
+        routine: The numerical routine (e.g., RK4) used for spatial integration.
+        config: Configuration defining sub-step counts and integration logic.
+    """
+
+    def __init__(self, routine: 'RK4SolverIterationRoutine', config: 'NumericalSolverConfig') -> None:
+        self.routine = routine
+        self.config = config
+        self._current_step_idx = 0
+
+    def iterate_interval(self, buffer: TracerStateBuffer, v_start: np.ndarray, v_end: np.ndarray, dt_interval: float, aux_fields: Mapping[str, np.ndarray]) -> None:
+        """Execute sub-stepped integration for a specific snapshot transition.
+
+        Args:
+            buffer: The state buffer tracking current positions and recording trajectory history.
+            v_start: Velocity field at simulation time T.
+            v_end: Velocity field at simulation time T + dt_interval.
+            dt_interval: The total physical time between the two snapshots.
+            aux_fields: Dictionary of additional fields (like 'q_criterion') to be sampled 
+                along the trajectories at every sub-step for diagnostic analysis.
+
+        Raises:
+            RuntimeError: If integration Diverges or if field shapes are inconsistent.
+        """
+        # Verification of field consistency
+        if v_start.shape != v_end.shape:
+            raise RuntimeError(f"Velocity field shape mismatch: {v_start.shape} vs {v_end.shape}")
+
+        K = self.config.sub_steps_per_snapshot
+        if K <= 0:
+             # Should not happen with default config, but for robustness:
+             return
+
+        dt = dt_interval / K
+        d_alpha = 1.0 / K
+
+        for k in range(K):
+            alpha_t = k * d_alpha
+            
+            # EXP3: Sample auxiliary fields at every sub-step
+            sampled_aux = {}
+            for name, field in aux_fields.items():
+                # Use the trilinear kernel from the routine for spatial interpolation
+                sampled_aux[name] = self.routine.kernel.interpolate(field, buffer.current_positions)
+            
+            # Record current step positions and sampled properties
+            buffer.commit_to_history(self._current_step_idx, samples=sampled_aux)
+            self._current_step_idx += 1
+            
+            # Perform numerical integration to advance to next sub-step positions
+            new_positions = self.routine.step(
+                positions=buffer.current_positions,
+                v_start=v_start,
+                v_end=v_end,
+                alpha_t=alpha_t,
+                dt=dt,
+                dt_interval=dt_interval
+            )
+            
+            # Check for numerical divergence
+            if np.any(np.isnan(new_positions)):
+                raise RuntimeError(f"Integration diverged at step {self._current_step_idx} (encountered NaN).")
+                
+            buffer.update_positions(new_positions)
