@@ -125,7 +125,7 @@ class AlphaExponentEstimator:
         
         return alpha
 
-    def estimate_asymptotic_exponent(self, lag_times: np.ndarray, msd_values: np.ndarray, tail_fraction: float=0.2) -> float:
+    def estimate_asymptotic_exponent(self, lag_times: np.ndarray, msd_values: np.ndarray, tail_fraction: float=0.5) -> float:
         """Estimates the final scaling exponent at the end of the simulation.
 
         Args:

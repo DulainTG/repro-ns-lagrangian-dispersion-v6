@@ -102,7 +102,7 @@ class VorticityTimescaleDeriver:
         # Find the first index where autocorrelation is below threshold
         indices = np.where(autocorrelation <= threshold)[0]
         if len(indices) == 0:
-            raise ValueError("The signal does not cross the 1/e threshold.")
+            raise ValueError("signal does not cross the 1/e threshold")
         
         idx = indices[0]
         if idx == 0:
