@@ -69,6 +69,9 @@ class MsdRegimeExperiment(BaseExperiment):
         if not self.snapshot_indices:
             raise RuntimeError(f"No snapshots found in data directory: {self.raw_data_dir}")
 
+        if self.config.snapshot_limit > 0:
+            self.snapshot_indices = self.snapshot_indices[:self.config.snapshot_limit]
+
         # Initialize 8,000 tracers uniformly in the domain
         # Using the number of tracers from config (expected to be 8,000)
         self.initial_positions = self.seeder.generate_initial_positions(self.config.number_of_tracers)
@@ -110,6 +113,10 @@ class MsdRegimeExperiment(BaseExperiment):
         path_start = self.path_resolver.get_path(self.snapshot_indices[0])
         t_start = self.loader.load_time(path_start)
         fields_start = self.loader.load_fields(path_start)
+        # Bridge shape mismatch: interpolation expects (NX, NY, NZ, 3)
+        v_start = fields_start.velocity
+        if v_start.shape[0] == 3 and v_start.ndim == 4:
+            v_start = v_start.transpose(1, 2, 3, 0)
         times.append(t_start)
 
         # Integration loop across snapshot intervals
@@ -118,6 +125,10 @@ class MsdRegimeExperiment(BaseExperiment):
             path_end = self.path_resolver.get_path(self.snapshot_indices[i+1])
             t_end = self.loader.load_time(path_end)
             fields_end = self.loader.load_fields(path_end)
+            # Bridge shape mismatch: interpolation expects (NX, NY, NZ, 3)
+            v_end = fields_end.velocity
+            if v_end.shape[0] == 3 and v_end.ndim == 4:
+                v_end = v_end.transpose(1, 2, 3, 0)
             
             dt_interval = t_end - t_start
             times.append(t_end)
@@ -132,8 +143,8 @@ class MsdRegimeExperiment(BaseExperiment):
                 alpha_t = k / K
                 current_positions = routine.step(
                     positions=current_positions,
-                    v_start=fields_start.velocity,
-                    v_end=fields_end.velocity,
+                    v_start=v_start,
+                    v_end=v_end,
                     alpha_t=alpha_t,
                     dt=dt,
                     dt_interval=dt_interval
@@ -144,7 +155,7 @@ class MsdRegimeExperiment(BaseExperiment):
             
             # Move to the next interval: reuse the end snapshot as the start of next
             t_start = t_end
-            fields_start = fields_end
+            v_start = v_end
 
         # Record position at the final snapshot (snapshot num_snapshots - 1)
         buffer.commit_to_history(num_snapshots - 1)
