@@ -1,5 +1,6 @@
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional, Mapping
+from src.analysis.trajectories import TrajectoryEnsemble
 
 class PositionCoordinateBuffer:
     """
@@ -108,3 +109,91 @@ class StateHistoryRecords:
             Mapping of property names to arrays of shape (num_tracers, num_snapshots, ...).
         """
         return self._records
+class TracerStateBuffer:
+    """
+    Central manager for current particle positions and their associated history.
+    
+    Maintains the 'living' state of tracers during integration sub-steps while
+    interfacing with historical coordinate and state buffers to build a TrajectoryEnsemble.
+    """
+
+    def __init__(self, initial_positions: np.ndarray, coord_buffer: PositionCoordinateBuffer, state_records: StateHistoryRecords) -> None:
+        """
+        Set up the tracking buffer with initial coordinates and history containers.
+        
+        Args:
+            initial_positions: Starting coordinates (num_tracers, 3).
+            coord_buffer: Permanent storage for trajectory positions.
+            state_records: Permanent storage for sampled flow properties.
+        """
+        self._positions = np.array(initial_positions, copy=True, dtype=np.float64)
+        self._coord_buffer = coord_buffer
+        self._state_records = state_records
+
+    @property
+    def current_positions(self) -> np.ndarray:
+        """The instantaneous world-coordinates of all tracers used for interpolation."""
+        # Enforce periodic boundary conditions on L=1 cubic domain
+        return self._positions % 1.0
+
+    def update_positions(self, new_positions: np.ndarray) -> None:
+        """Update the active coordinates after an integration step or boundary wrap."""
+        self._positions = np.array(new_positions, copy=True, dtype=np.float64)
+
+    def commit_to_history(self, snapshot_idx: int, samples: Optional[Mapping[str, np.ndarray]] = None) -> None:
+        """
+        Persist current snapshot state and properties to long-term storage.
+        
+        Args:
+            snapshot_idx: The current temporal index to record.
+            samples: Optional mapping of field values (Q, V_LS) sampled at current positions.
+        """
+        self._coord_buffer.record_step(snapshot_idx, self._positions)
+        if samples is not None:
+            for property_name, values in samples.items():
+                self._state_records.record_sample(property_name, snapshot_idx, values)
+
+    def build_ensemble(self, times: np.ndarray) -> TrajectoryEnsemble:
+        """
+        Construct a finalized trajectory dataset for analysis.
+        
+        Args:
+            times: Array of physical times or indices for each recorded snapshot.
+            
+        Returns:
+            A TrajectoryEnsemble suitable for EXP1/2/3 calculations.
+        """
+        # Ensure times is a numpy array
+        times_arr = np.array(times, copy=True)
+        return TrajectoryEnsemble(
+            times=times_arr,
+            positions=self._coord_buffer.get_data().copy(),
+            sampled_properties=self._state_records.to_dict().copy()
+        )
+
+class HistoryStateRecorder:
+    """
+    Service responsible for periodic snapshot capture from the tracking system.
+    
+    Synchronizes snapshot-level tracking logic with the underlying buffers,
+    ensuring integration sub-steps are correctly mapped to history records.
+    """
+
+    def __init__(self, tracking_buffer: TracerStateBuffer) -> None:
+        """
+        Initialize the recorder.
+        
+        Args:
+            tracking_buffer: The target state buffer involved in the simulation.
+        """
+        self.tracking_buffer = tracking_buffer
+
+    def capture(self, snapshot_idx: int, sampled_properties: Optional[Mapping[str, np.ndarray]] = None) -> None:
+        """
+        Execute a record operation for the current integration state.
+        
+        Args:
+            snapshot_idx: The index of the VTK snapshot/time-point being recorded.
+            sampled_properties: Fields like Q-criterion or V_LS sampled *at* tracer positions.
+        """
+        self.tracking_buffer.commit_to_history(snapshot_idx, samples=sampled_properties)
