@@ -76,6 +76,17 @@ class VtkSnapshotLoader(Protocol):
         """
         ...
 
+    def load_time(self, path: Path) -> float:
+        """Extract the physical simulation time from the snapshot.
+
+        Args:
+            path: Path to the VTK file.
+
+        Returns:
+            float: The simulation time.
+        """
+        ...
+
     def load_fields(self, path: Path) -> VtkSnapshotFields:
         """Load the primary velocity and density fields.
 
@@ -86,6 +97,8 @@ class VtkSnapshotLoader(Protocol):
             VtkSnapshotFields: The vector velocity and scalar density fields.
         """
         ...
+
+
 class AthenaVtkLoader(VtkSnapshotLoader):
     """Concrete loader for Athena++ VTK snapshots (DS1).
 
@@ -124,6 +137,19 @@ class AthenaVtkLoader(VtkSnapshotLoader):
             _ = self.header_parser.parse_header_metadata(f)
             return self.grid_extractor.extract_grid(f)
 
+    def load_time(self, path: Path) -> float:
+        """Extract simulation time from Athena VTK snapshot.
+
+        Args:
+            path: Path to the VTK file.
+
+        Returns:
+            float: Extracted simulation time.
+        """
+        with open(path, "rb") as f:
+            metadata = self.header_parser.parse_header_metadata(f)
+            return float(metadata.get("time", 0.0))
+
     def load_fields(self, path: Path) -> VtkSnapshotFields:
         """Load velocity and density fields from an Athena VTK file.
 
@@ -138,3 +164,5 @@ class AthenaVtkLoader(VtkSnapshotLoader):
             velocity = self.data_parser.read_velocity_field(f, grid)
             density = self.data_parser.read_density_field(f, grid)
         return VtkSnapshotFields(velocity=velocity, density=density)
+
+
