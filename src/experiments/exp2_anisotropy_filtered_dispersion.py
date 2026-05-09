@@ -118,17 +118,14 @@ class FilteredAnisotropyExperiment(BaseExperiment):
         v_ls_start = self._calculate_v_ls(fields_start.velocity, transformer, index_map)
         
         # v_ls_start has shape (NX, NY, NZ, 3).
-        # We need to ensure interpolate can handle its shape if it expects (NX, NY, NZ, 3) 
-        # or transpose it if it expects (3, NX, NY, NZ).
-        # Looking at interpolation.py, it expects (NX, NY, NZ, C).
-        # So (NX, NY, NZ, 3) is correct here.
         v_ls_at_p0 = kernel.interpolate(v_ls_start, self.initial_positions)
         v_ls_mag = np.linalg.norm(v_ls_at_p0, axis=1, keepdims=True)
         v_ls_unit_p0 = v_ls_at_p0 / np.where(v_ls_mag > 0, v_ls_mag, 1.0)
 
-        # Transpose velocity fields from (3, NX, NY, NZ) to (NX, NY, NZ, 3) 
-        # so they are compatible with the interpolation kernel.
-        v_start_interp = fields_start.velocity.transpose(1, 2, 3, 0)
+        # Bridge shape mismatch: interpolation expects (NX, NY, NZ, 3)
+        v_start_interp = fields_start.velocity
+        if v_start_interp.ndim == 4 and v_start_interp.shape[0] == 3:
+            v_start_interp = v_start_interp.transpose(1, 2, 3, 0)
 
         # Integration loop across snapshot intervals
         for i in range(num_snapshots - 1):
@@ -136,7 +133,10 @@ class FilteredAnisotropyExperiment(BaseExperiment):
             path_end = self.path_resolver.get_path(self.snapshot_indices[i+1])
             t_end = self.loader.load_time(path_end)
             fields_end = self.loader.load_fields(path_end)
-            v_end_interp = fields_end.velocity.transpose(1, 2, 3, 0)
+            
+            v_end_interp = fields_end.velocity
+            if v_end_interp.ndim == 4 and v_end_interp.shape[0] == 3:
+                v_end_interp = v_end_interp.transpose(1, 2, 3, 0)
             
             dt_interval = t_end - t_start
             times.append(t_end)
@@ -171,15 +171,22 @@ class FilteredAnisotropyExperiment(BaseExperiment):
         return self.analyzer.calculate_time_series(ensemble)
 
     def _calculate_v_ls(self, velocity: np.ndarray, transformer: SpectralTransformer, index_map: WavenumberIndexMap) -> np.ndarray:
-        """Helper to calculate filtered V_LS field from velocity components."""
-        # velocity shape is (3, NX, NY, NZ)
+        """Helper to calculate filtered V_LS field from velocity components.
+        
+        Correctly handles both (3, NX, NY, NZ) and (NX, NY, NZ, 3) input shapes.
+        """
+        is_channels_first = (velocity.ndim == 4 and velocity.shape[0] == 3)
+        
         v_ls_components = []
         for d in range(3):
-            v_comp = velocity[d, ...]
+            # Extract component d: should have shape (NX, NY, NZ)
+            v_comp = velocity[d, ...] if is_channels_first else velocity[..., d]
+            
             coeffs = transformer.forward_fft_3d(v_comp)
             filtered_coeffs = apply_sharp_band_filter(coeffs, index_map, self.config.filter_range)
             v_ls_comp = transformer.reconstruct_physical_field(filtered_coeffs)
             v_ls_components.append(v_ls_comp)
+            
         # return (NX, NY, NZ, 3) for the rest of the pipeline
         return np.stack(v_ls_components, axis=-1)
 
