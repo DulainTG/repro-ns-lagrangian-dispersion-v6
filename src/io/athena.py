@@ -1,5 +1,6 @@
-from typing import NamedTuple, Sequence, Iterator
+from typing import NamedTuple, Sequence, Iterator, Tuple
 from pathlib import Path
+import numpy as np
 
 from src.fields.grid import GridMetadata
 from src.io.vtk.loader import VtkPathResolver, VtkSnapshotLoader, VtkSnapshotFields
@@ -67,3 +68,43 @@ class AthenaSnapshotSequence:
             except Exception as e:
                 # Catching general Exceptions during file processing and re-raising as IOError
                 raise IOError(f"Error processing snapshot at index {index}: {str(e)}") from e
+class VelocitySnapshotStream:
+    """A specialized stream for DNS velocity snapshots as required by Lagrangian tracking experiments.
+    
+    Filters a snapshot sequence to provide (time, velocity) pairs specifically 
+    tailored for dispersion calculations (EXP1) and anisotropy analysis (EXP2).
+    """
+
+    def __init__(self, sequence: AthenaSnapshotSequence) -> None:
+        """
+        Args:
+            sequence: The underlying snapshot sequence instance.
+        """
+        self.sequence = sequence
+
+    def __iter__(self) -> Iterator[Tuple[float, np.ndarray]]:
+        """Iterates through the sequence specifically providing velocity fields.
+        
+        Yields:
+            Tuple[float, np.ndarray]: A pair containing (physical_time, velocity_field), 
+                where velocity_field is an array of shape (NX, NY, NZ, 3).
+        """
+        for snapshot in self.sequence:
+            # Transpose from (3, NX, NY, NZ) to (NX, NY, NZ, 3) as per docstring
+            yield snapshot.physical_time, snapshot.fields.velocity.transpose(1, 2, 3, 0)
+def create_ds1_sequence(raw_data_dir: Path, loader: VtkSnapshotLoader) -> AthenaSnapshotSequence:
+    """Factory to create a sequence for the primary 'Solenoidal Turbulence DNS Velocity Snapshots' dataset (DS1).
+    
+    Configures the sequence with the exact index range (18903-19893) and step (10) 
+    specified for the paper's primary 100-snapshot reproduction duration.
+
+    Args:
+        raw_data_dir: Path to the directory containing Turb.hydro_w.*.vtk files.
+        loader: An instantiated Athena VTK loader.
+
+    Returns:
+        AthenaSnapshotSequence: A pre-configured sequence for the main experiments.
+    """
+    resolver = VtkPathResolver(raw_data_dir)
+    indices = range(18903, 19893 + 1, 10)
+    return AthenaSnapshotSequence(resolver, loader, indices)
