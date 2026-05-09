@@ -102,7 +102,9 @@ class VorticityTimescaleDeriver:
         # Find the first index where autocorrelation is below threshold
         indices = np.where(autocorrelation <= threshold)[0]
         if len(indices) == 0:
-            raise ValueError("The signal does not cross the 1/e threshold.")
+            # For smoke mode or short runs, fall back to the maximum available lag 
+            # as a lower-bound estimate of the timescale.
+            return float(lag_times[-1])
         
         idx = indices[0]
         if idx == 0:

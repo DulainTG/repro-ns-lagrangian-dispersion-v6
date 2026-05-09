@@ -96,6 +96,24 @@ def run_experiment(exp_name, mode, raw_data_dir, output_dir, overrides):
         logger.info(f"Phase 3: Serializing artifacts and generating reports...")
         exp.save_artifacts(results)
         
+        # Optional validation logging for paper claims
+        if exp_name == "EXP1":
+            from src.analysis.statistics import TransportRegime
+            from src.experiments.exp1_lagrangian_tracer_msd import RegimeTransitionValidator
+            v = RegimeTransitionValidator()
+            rep = v.validate_msd_regimes(results)
+            logger.info(f"Validation (Claim C4): Ballistic={TransportRegime.BALLISTIC in rep.detected_regimes}, Diffusive={TransportRegime.DIFFUSIVE in rep.detected_regimes}")
+        elif exp_name == "EXP2":
+            from src.experiments.exp2_anisotropy_filtered_dispersion import TransverseDominanceValidator
+            v = TransverseDominanceValidator()
+            rep = v.validate_anisotropy_ratio(results, threshold_time=config.analysis_time_threshold)
+            logger.info(f"Validation (Claim C1): Asymptotic Lambda={rep.asymptotic_lambda:.4f}, Transverse-Dominant={rep.is_transverse_dominant}")
+        elif exp_name == "EXP3":
+            from src.experiments.exp3_vortex_residence_q_autocorr import VortexTrappingValidator
+            v = VortexTrappingValidator()
+            rep = v.validate_trapping_timescale(results.summary)
+            logger.info(f"Validation (Claim C2): Tau_Q / Te={rep.tau_q_over_te:.4f}, C2-Satisfied={rep.is_c2_satisfied}")
+
         logger.info(f"SUCCESS: {exp_name} reproduction pipeline complete.")
         
     except Exception as e:
@@ -194,6 +212,24 @@ def main():
         print("environment variable. Ensure you have the Solenoidal Turbulence (DS1) data.")
         print("!"*80 + "\n")
         sys.exit(1)
+
+    # Bounded read smoke test: Validate first available snapshot schema
+    first_snapshot = sorted(list(raw_data_dir.glob("Turb.hydro_w.*.vtk")))[0]
+    logger.info(f"Validating dataset schema on {first_snapshot.name}...")
+    try:
+        from src.io.vtk.loader import AthenaVtkLoader
+        from src.io.vtk.parser import AthenaHeaderParser, AthenaBinaryDataParser, VtkGridExtractor
+        
+        loader = AthenaVtkLoader(
+            header_parser=AthenaHeaderParser(),
+            data_parser=AthenaBinaryDataParser(),
+            grid_extractor=VtkGridExtractor()
+        )
+        # Attempt to load metadata
+        metadata = loader.load_metadata(first_snapshot)
+        logger.info(f"Schema validation successful: Dim={metadata.dimensions}, Extent={metadata.extent}")
+    except Exception as e:
+        logger.warning(f"Initial schema validation check failed (continuing anyway): {e}")
 
     # Execute designated command
     try:
