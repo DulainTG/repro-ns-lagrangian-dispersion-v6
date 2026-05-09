@@ -120,6 +120,11 @@ class VortexTrappingExperiment(BaseExperiment):
         path_start = self.path_resolver.get_path(self.snapshot_indices[0])
         t_start = self.loader.load_time(path_start)
         fields_start = self.loader.load_fields(path_start)
+        
+        # Bridge shape mismatch: interpolation expects (NX, NY, NZ, 3)
+        v_start = fields_start.velocity
+        if v_start.ndim == 4 and v_start.shape[0] == 3:
+            v_start = v_start.transpose(1, 2, 3, 0)
 
         # Integration loop across snapshot intervals
         for i in range(num_snapshots - 1):
@@ -127,12 +132,22 @@ class VortexTrappingExperiment(BaseExperiment):
             path_end = self.path_resolver.get_path(self.snapshot_indices[i + 1])
             t_end = self.loader.load_time(path_end)
             fields_end = self.loader.load_fields(path_end)
+            
+            # Bridge shape mismatch: interpolation expects (NX, NY, NZ, 3)
+            v_end = fields_end.velocity
+            if v_end.ndim == 4 and v_end.shape[0] == 3:
+                v_end = v_end.transpose(1, 2, 3, 0)
 
             dt_interval = t_end - t_start
             times.append(t_start)
 
             # --- Sample Q at current snapshot ---
-            grad_tensor = grad_op.compute_gradient_tensor(fields_start.velocity)
+            # Gradient operator expects (3, NX, NY, NZ)
+            v_for_grad = fields_start.velocity
+            if v_for_grad.ndim == 4 and v_for_grad.shape[-1] == 3:
+                v_for_grad = v_for_grad.transpose(3, 0, 1, 2)
+            
+            grad_tensor = grad_op.compute_gradient_tensor(v_for_grad)
             decomp = decompose_strain_vorticity(grad_tensor)
             q_field = self.vortex_diagnostic.generate_q_criterion_field(decomp)
             
@@ -147,8 +162,8 @@ class VortexTrappingExperiment(BaseExperiment):
                 alpha_t = k / K
                 current_positions = routine.step(
                     positions=current_positions,
-                    v_start=fields_start.velocity,
-                    v_end=fields_end.velocity,
+                    v_start=v_start,
+                    v_end=v_end,
                     alpha_t=alpha_t,
                     dt=dt,
                     dt_interval=dt_interval
@@ -160,10 +175,17 @@ class VortexTrappingExperiment(BaseExperiment):
             # Move to the next interval
             t_start = t_end
             fields_start = fields_end
+            v_start = v_end
 
         # Record at the final snapshot
         times.append(t_start)
-        grad_tensor = grad_op.compute_gradient_tensor(fields_start.velocity)
+        
+        # Gradient operator expects (3, NX, NY, NZ)
+        v_for_grad_final = fields_start.velocity
+        if v_for_grad_final.ndim == 4 and v_for_grad_final.shape[-1] == 3:
+            v_for_grad_final = v_for_grad_final.transpose(3, 0, 1, 2)
+            
+        grad_tensor = grad_op.compute_gradient_tensor(v_for_grad_final)
         decomp = decompose_strain_vorticity(grad_tensor)
         q_field = self.vortex_diagnostic.generate_q_criterion_field(decomp)
         q_sampled = kernel.interpolate(q_field, buffer.current_positions)
