@@ -65,3 +65,63 @@ class SpectralCoefficientBuffer:
     def data(self) -> np.ndarray:
         """Returns the underlying complex-valued spectral array (complex128)."""
         return self._data
+class SpectralTransformer:
+    """Handles 3D Fourier transformations and field reconstruction.
+
+    Implements the FFT cycle required for EXP2: DNS Velocity -> FFT -> Filter -> IFFT 
+    to produce the filtered large-scale velocity field V_LS.
+    """
+
+    def __init__(self, metadata: GridMetadata) -> None:
+        """Initializes the transformer with grid metadata.
+
+        Args:
+            metadata: Metadata defining grid dimensions and physical extent.
+        """
+        self._metadata = metadata
+
+    def forward_fft_3d(self, physical_field: np.ndarray) -> SpectralCoefficientBuffer:
+        """Computes the 3D forward Fourier transform of a real-valued field.
+
+        Args:
+            physical_field: Real-valued 3D array of spatial data (e.g., velocity component).
+
+        Returns:
+            SpectralCoefficientBuffer: Complex coefficients in wavenumber space.
+        """
+        # standard 3D FFT on the provided field
+        # np.fft.fftn expects an N-dimensional array and transforms all axes by default
+        coeffs = np.fft.fftn(physical_field)
+        return SpectralCoefficientBuffer(coeffs)
+
+    def inverse_fft_3d(self, buffer: SpectralCoefficientBuffer) -> np.ndarray:
+        """Computes the 3D inverse Fourier transform back to physical space.
+
+        Args:
+            buffer: Complex wavenumber coefficients to transform.
+
+        Returns:
+            np.ndarray: Complex-valued 3D array in physical space.
+        """
+        # np.fft.ifftn handles the 1/N normalization required for reconstruction
+        return np.fft.ifftn(buffer.data)
+
+    def reconstruct_physical_field(self, buffer: SpectralCoefficientBuffer) -> np.ndarray:
+        """Reconstructs a real-valued physical field from spectral coefficients.
+
+        Ensures correct normalization and real-valued constraints after inverse 
+        transformation to yield the final filtered velocity field components.
+
+        Args:
+            buffer: The processed/filtered spectral coefficients.
+
+        Returns:
+            np.ndarray: Real-valued 3D physical field on the mesh.
+        """
+        # Step 1: Perform 3D inverse transform
+        complex_field = self.inverse_fft_3d(buffer)
+        
+        # Step 2: Extract the real part. While spectral methods for real fields 
+        # should ideally preserve Hermitian symmetry, numerical precision and 
+        # certain filter operations may introduce small imaginary components.
+        return np.real(complex_field)
