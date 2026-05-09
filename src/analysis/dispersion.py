@@ -17,6 +17,21 @@ class AnisotropyMetrics:
     msd_perp: np.ndarray
     lambda_ratio: np.ndarray
 
+    def to_dataframe(self) -> 'pd.DataFrame':
+        """Convert anisotropy results into a standard tabular format for serialization.
+
+        Returns:
+            DataFrame with columns: lag_time, msd_parallel, msd_perp, lambda_ratio.
+        """
+        import pandas as pd
+        return pd.DataFrame({
+            'lag_time': self.lag_times,
+            'msd_parallel': self.msd_parallel,
+            'msd_perp': self.msd_perp,
+            'lambda_ratio': self.lambda_ratio
+        })
+
+
 
 class AnisotropyAnalyzer:
     """Calculates dispersion anisotropy by decomposing Lagrangian displacements.
