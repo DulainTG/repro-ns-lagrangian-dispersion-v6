@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, Tuple
 from .transforms import WavenumberIndexMap, SpectralCoefficientBuffer
 
 @runtime_checkable
@@ -110,3 +110,54 @@ def apply_band_mask(buffer: SpectralCoefficientBuffer, mask: np.ndarray) -> Spec
         if isinstance(e, ValueError):
             raise e
         raise ValueError(f"Incompatible shapes for masking: buffer {data.shape} and mask {mask.shape}. Error: {str(e)}")
+
+
+class ComplexSpaceFilter:
+    """Applies spectral kernels to complex coefficient buffers in the Fourier domain.
+
+    Encapsulates the state required to perform efficient element-wise operations
+    on transformed flow fields, such as isolating large-scale structures.
+    """
+
+    def __init__(self, index_map: WavenumberIndexMap) -> None:
+        """Initialize filter with grid wavenumber context.
+
+        Args:
+            index_map: Mapping of spectral indices to wavenumber magnitudes.
+        """
+        self.index_map = index_map
+
+    def apply_kernel(self, buffer: SpectralCoefficientBuffer, kernel: SpectralMaskKernel) -> SpectralCoefficientBuffer:
+        """Apply a masking kernel to all components of a spectral buffer.
+
+        Args:
+            buffer: Complex coefficients representing the transformed field.
+            kernel: The weighting strategy to apply.
+
+        Returns:
+            A new buffer containing the filtered complex coefficients.
+
+        Raises:
+            ValueError: If the kernel dimensions mismatch the buffer.
+        """
+        weights = kernel.compute_weights(self.index_map)
+        return apply_band_mask(buffer, weights)
+
+
+def apply_sharp_band_filter(buffer: SpectralCoefficientBuffer, index_map: WavenumberIndexMap, k_range: Tuple[float, float] = (1.0, 3.0)) -> SpectralCoefficientBuffer:
+    """Isolates a sharp shell of wavenumbers, zeroing all others.
+
+    This function is a high-level entry point specifically for EXP2 implementation,
+    where wavenumbers n in [1, 3] are isolated to calculate the large-scale 
+    velocity field V_LS.
+
+    Args:
+        buffer: The original complex spectral field.
+        index_map: Wavenumber mapping for the current grid.
+        k_range: The inclusive [min, max] range of wavenumbers to keep.
+
+    Returns:
+        Filtered complex coefficients with only modes in k_range preserved.
+    """
+    mask = index_map.get_mask(k_range[0], k_range[1]).astype(np.float64)
+    return apply_band_mask(buffer, mask)
