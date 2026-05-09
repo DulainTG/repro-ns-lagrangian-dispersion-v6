@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "results_artifacts_dir": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs",
+  "paper_markdown_path": "/Users/dtgamage/Replika/replika/common/paper/paper/paper_ocr.md",
+  "methodology_dir": "/Users/dtgamage/Replika/replika/common/outputs/run_20260508_172703/methodology_output",
+  "scoping_dir": "/Users/dtgamage/Replika/replika/common/outputs/run_20260508_172703/scoping_output",
+  "background_writer_agent_id": "../../stages/report/agents/background_writer",
+  "reviewer_agent_id": "../../stages/report/agents/results_reviewer",
+  "experiment_priority_filter": 1,
+  "background_only": false,
+  "results_only": false,
+  "cost_dir": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost",
+  "cost_reports": {
+    "background_writer": {
+      "stage_report_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost/cost_report_stage_background_writer_20260509_095549.json",
+      "cumulative_report_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost/cost_report_cumulative_background_writer_20260509_095549.json"
+    },
+    "results_reviewer": {
+      "stage_report_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost/cost_report_stage_results_reviewer_20260509_095549.json",
+      "cumulative_report_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/cost/cost_report_cumulative_results_reviewer_20260509_095549.json"
+    }
+  },
+  "artifact_counts": {
+    "artifact_inventory_files": 4,
+    "artifact_text_samples": 4,
+    "image_artifacts_attached": 0,
+    "rendered_figures": 0,
+    "rendered_tables": 2
+  },
+  "included_experiment_dirs": [
+    "exp1",
+    "exp2",
+    "exp3"
+  ],
+  "background_output_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/background.md",
+  "output_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/results_review.md",
+  "final_report_output_path": "/Users/dtgamage/Replika/replika/common/outputs/ZeroRepoTesting/zerorepo_run_20260509_095549/workspace/outputs/report_output/final_report.md"
+}
