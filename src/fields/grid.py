@@ -88,3 +88,79 @@ class StructuredField:
             return self._data[..., component_idx]
 
         raise ValueError(f"Unsupported or unknown layout: {self._layout}")
+class CoordinateMapper:
+    """Translates between physical world coordinates and discrete grid indices.
+
+    Essential for EXP1 and EXP3 to perform trilinear interpolation of velocity 
+    and Q-criterion fields at arbitrary tracer positions.
+
+    Args:
+        metadata: Metadata describing the grid origin, spacing, and dimensions.
+    """
+
+    def __init__(self, metadata: 'GridMetadata') -> None:
+        self._metadata = metadata
+        self._origin = np.array(metadata.origin)
+        self._spacing = np.array(metadata.spacing)
+
+    def to_index(self, world_coords: np.ndarray) -> np.ndarray:
+        """Convert physical coordinates to continuous grid indices.
+
+        Args:
+            world_coords: Array of (x, y, z) positions, shape (..., 3).
+
+        Returns:
+            Floating-point indices (i, j, k) for interpolation, shape (..., 3).
+        """
+        return (world_coords - self._origin) / self._spacing
+
+    def to_world(self, grid_indices: np.ndarray) -> np.ndarray:
+        """Convert grid indices back to physical world coordinates.
+
+        Args:
+            grid_indices: Floating-point or integer indices (i, j, k).
+
+        Returns:
+            Physical (x, y, z) coordinates.
+        """
+        return (grid_indices * self._spacing) + self._origin
+
+
+class PeriodicTopology:
+    """Enforces periodic boundary conditions on a cubic domain.
+
+    Implements the L=1 periodic cubic domain logic required for EXP1 Lagrangian 
+    tracer integration, ensuring tracers stay within the physical bounds [-0.5, 0.5].
+
+    Args:
+        extent: The characteristic length L of the cubic domain (default 1.0).
+        origin: The physical center or starting point of the domain.
+    """
+
+    def __init__(self, extent: float = 1.0, origin: float = -0.5) -> None:
+        self._extent = extent
+        self._origin = origin
+
+    def wrap_positions(self, positions: np.ndarray) -> np.ndarray:
+        """Apply modulo L logic to wrap positions back into the periodic domain.
+
+        Args:
+            positions: Array of tracer coordinates, shape (..., 3).
+
+        Returns:
+            Wrapped coordinates within the range [origin, origin + extent).
+        """
+        return ((positions - self._origin) % self._extent) + self._origin
+
+    def calculate_displacement(self, start: np.ndarray, end: np.ndarray) -> np.ndarray:
+        """Calculate the shortest Periodic distance vector between two points.
+
+        Args:
+            start: Starting position vector.
+            end: Ending position vector.
+
+        Returns:
+            The displacement vector accounting for periodic boundary crossings.
+        """
+        diff = end - start
+        return (diff + self._extent / 2) % self._extent - self._extent / 2
