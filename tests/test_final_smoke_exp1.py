@@ -23,7 +23,8 @@ def test_final_smoke_exp1_canonical(tmp_path):
         "--output-dir", str(output_dir)
     ]
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, cwd=repo_root)
     
     assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
     assert "SUCCESS: EXP1 reproduction pipeline complete." in result.stdout
@@ -60,7 +61,8 @@ def test_final_smoke_exp1_dataset_alias(tmp_path):
         "--output-dir", str(output_dir)
     ]
     
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    repo_root = Path(__file__).parent.parent
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, cwd=repo_root)
     
     assert result.returncode == 0, f"Command failed with stderr: {result.stderr}"
     assert "SUCCESS: EXP1 reproduction pipeline complete." in result.stdout
