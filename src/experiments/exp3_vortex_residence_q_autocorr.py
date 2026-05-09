@@ -84,6 +84,9 @@ class VortexTrappingExperiment(BaseExperiment):
         if not self.snapshot_indices:
             raise RuntimeError(f"No snapshots found in data directory: {self.raw_data_dir}")
 
+        if self.config.snapshot_limit > 0:
+            self.snapshot_indices = self.snapshot_indices[:self.config.snapshot_limit]
+
         self.initial_positions = self.seeder.generate_initial_positions(self.config.number_of_tracers)
 
         # Load metadata from the first snapshot
