@@ -45,8 +45,12 @@ def run_experiment(exp_name, mode, raw_data_dir, output_dir, overrides):
     if mode == 'smoke':
         logger.info("Applying 'smoke' mode constraints: reducing sample size and resolution.")
         settings['number_of_tracers'] = 10
-        settings['sub_steps_per_snapshot'] = 2
-        settings['snapshot_limit'] = 3
+        if exp_name == "EXP3":
+            settings['sub_steps_per_snapshot'] = 1
+            settings['snapshot_limit'] = 10
+        else:
+            settings['sub_steps_per_snapshot'] = 2
+            settings['snapshot_limit'] = 3
 
     # Apply explicit CLI overrides
     for key, value in overrides.items():
