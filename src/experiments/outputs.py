@@ -26,6 +26,7 @@ class ReproductionRunSettings:
     filter_range: tuple[int, int]
     analysis_time_threshold: float
     domain_extent: float = 1.0
+    snapshot_limit: int = -1
 
 
 @dataclass(frozen=True)
